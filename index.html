@@ -1957,38 +1957,41 @@ function drawCard(cv){
   x.fillText("차트는 답을 알고 있다. 우리가 모를 뿐.", 92, 208);
   // 티어 (인앱과 동일 배색)
   const tcol = {S:"#ffb020",A:"#a06bff",B:"#3182f6",C:"#33cc7a",D:"#e6e9ef",E:"#ff7a45",F:"#f04452"}[R.tier];
-  x.save(); x.translate(200, 408); x.rotate(-6*Math.PI/180);
-  x.strokeStyle = tcol; x.lineWidth = 9;
-  x.beginPath(); x.arc(0, 0, 104, 0, Math.PI*2); x.stroke();
-  x.globalAlpha = .5; x.lineWidth = 3;
-  x.beginPath(); x.arc(0, 0, 92, 0, Math.PI*2); x.stroke();
+  // [디자인 제안 #20] 티어 확대(104→126) + 우측 텍스트 컬럼(원과 92px 간격): 등급 라벨·수익률 메인, 최종 자산 보조
+  const pos = R.ret >= 0, PC = pos ? "#33cc7a" : "#f04452";
+  x.save(); x.translate(222, 414); x.rotate(-6*Math.PI/180);
+  x.strokeStyle = tcol; x.lineWidth = 11;
+  x.beginPath(); x.arc(0, 0, 126, 0, Math.PI*2); x.stroke();
+  x.globalAlpha = .5; x.lineWidth = 3.5;
+  x.beginPath(); x.arc(0, 0, 111, 0, Math.PI*2); x.stroke();
   x.globalAlpha = 1;
-  x.fillStyle = tcol; x.textAlign = "center"; x.font = "900 118px "+KF;
-  x.fillText(R.tier, 0, 42);
+  x.fillStyle = tcol; x.textAlign = "center"; x.font = "900 142px "+KF;
+  x.fillText(R.tier, 0, 50);
   x.restore();
-  x.textAlign = "left"; x.font = "700 40px "+KF; x.fillStyle = "#8b93a3";
-  x.fillText(R.label, 336, 424);
-  // 자산·수익률
-  x.font = "800 92px "+KF; x.fillStyle = "#e6e9ef";
-  x.fillText(fmtWonAbs(R.asset), 92, 668);
-  x.font = "800 54px "+KF; x.fillStyle = R.ret >= 0 ? "#33cc7a" : "#f04452";
-  x.fillText("수익률 " + fmtPct(R.ret), 92, 744);
+  x.textAlign = "left";
+  x.font = "700 42px "+KF; x.fillStyle = "#c3cbdb";
+  x.fillText(R.label, 440, 340);
+  x.font = "800 108px "+KF; x.fillStyle = PC;
+  x.fillText(fmtPct(R.ret), 436, 452);
+  const wonTxt = fmtWonAbs(R.asset);
+  x.font = "600 34px "+KF; x.fillStyle = "#8b93a3";
+  x.fillText("최종 자산 : " + wonTxt + (wonTxt.endsWith("원") ? "" : "원"), 440, 512);
   // 스파크라인
   const assets = [C.START_ASSET].concat(R.recs.map(r=>r.assetAfter));
   const lo = Math.min(...assets), hi = Math.max(...assets);
   const pd = (hi-lo)*0.15 + 1;
-  const SX = i => 92 + (S-184)*i/10, SY = v => 902 - (v-lo+pd)/(hi-lo+pd*2)*118;
+  const SX = i => 92 + (S-184)*i/10, SY = v => 836 - (v-lo+pd)/(hi-lo+pd*2)*240;  // [디자인 제안 #20] 그래프 확대(118→240)
   x.strokeStyle = "#39414f"; x.setLineDash([6,6]); x.lineWidth = 2;
   x.beginPath(); x.moveTo(92, SY(C.START_ASSET)); x.lineTo(S-92, SY(C.START_ASSET)); x.stroke();
   x.setLineDash([]);
-  x.strokeStyle = "#aeb6c6"; x.lineWidth = 5; x.lineJoin = "round"; x.beginPath();
+  x.strokeStyle = "#aeb6c6"; x.lineWidth = 6; x.lineJoin = "round"; x.beginPath();
   assets.forEach((a,i)=> i ? x.lineTo(SX(i),SY(a)) : x.moveTo(SX(i),SY(a)));
   x.stroke();
   // 글리프 스트립 (§6.7 — 캔버스 이모지 금지, 타일 글리프)
   const gs = 64, gg = 22, gx0 = (S - (10*gs + 9*gg))/2;
-  R.types.forEach((t,i)=> Glyph.draw(x, t, gx0 + i*(gs+gg) + gs/2, 944, gs));  // [디자인 제안 #20] URL 공간 확보 — 24px 상향
+  R.types.forEach((t,i)=> Glyph.draw(x, t, gx0 + i*(gs+gg) + gs/2, 900, gs));  // [디자인 제안 #20] URL 공간 확보 — 24px 상향
   x.textAlign = "center"; x.font = "700 28px "+KF; x.fillStyle = "#8b93a3";
-  x.fillText("shinpepe.github.io/chart-rush", S/2, 1012);                       // [디자인 제안 #20] 하단 URL
+  x.fillText("shinpepe.github.io/chart-rush", S/2, 1000);                       // [디자인 제안 #20] 하단 URL
 }
 function saveShareImage(){
   const cv = $("share-prev");
