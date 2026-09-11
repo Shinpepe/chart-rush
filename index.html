@@ -40,17 +40,20 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--gold);outline-offse
   min-height:46px;padding:10px 16px;border-radius:var(--r);background:var(--panel);
   display:inline-flex;align-items:center;justify-content:center;gap:8px;text-align:center;
   border:1px solid var(--line);font-weight:600;transition:transform .06s ease, background .15s;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.045); /* [디자인 제안 #6] 윗면 하이라이트 1px — 입체감 */
 }
 .btn:active:not(:disabled){transform:scale(.97);}
-.btn-primary{background:linear-gradient(180deg,#233049,#1b2436);border-color:#33415e;}
-#btn-confirm.long{background:var(--up);border-color:var(--up);color:#fff;animation:armGlow 2.2s ease-in-out infinite;}
-#btn-confirm.short{background:var(--down);border-color:var(--down);color:#fff;animation:armGlow 2.2s ease-in-out infinite;}
-@keyframes armGlow{50%{box-shadow:0 0 22px -4px currentColor;}}
-.btn-primary:not(:disabled){animation:ctaGlow 2.6s ease-in-out infinite;}
-@keyframes ctaGlow{0%,100%{box-shadow:0 0 0 rgba(255,176,32,0);}50%{box-shadow:0 0 14px rgba(255,176,32,.22);}}
+.btn-primary{background:linear-gradient(180deg,#233049,#1b2436);border-color:#33415e;
+  box-shadow:none;} /* [디자인 제안 #6-v2] 프라이머리는 하이라이트 제외 — 원본의 평평한 면 유지 */
+#btn-confirm.long{background:var(--up);border-color:var(--up);color:#fff;}
+#btn-confirm.short{background:var(--down);border-color:var(--down);color:#fff;}
+/* [디자인 제안 #15] 버튼 대기 글로우 제거 — 프라이머리 공통 골드 펄스(ctaGlow)와
+   투자 확정 대기 펄스(armGlow)의 animation 선언·키프레임 삭제. 눌림(scale)·전환 효과는 유지.
+   복원하려면 원본 v2.8의 해당 5줄을 되살리면 됨. */
 .btn-cta{width:100%;font-size:17px;min-height:52px;}
-#btn-daily{display:flex;flex-direction:column;gap:3px;padding:12px 16px;}
-#btn-daily .sub{font-size:12.5px;color:var(--muted);font-weight:600;}
+#btn-daily{display:flex;flex-direction:column;gap:3px;padding:14px 16px;min-height:62px;
+  background:linear-gradient(180deg,#2a3a5c,#1b2436);border-color:#41537c;font-size:18px;} /* [디자인 제안 #5] 히어로 CTA — 한 단계 밝고 크게 */
+#btn-daily .sub{font-size:12.5px;color:#9fb0cf;font-weight:600;}
 .row{display:flex;gap:8px;align-items:center;}
 .grow{flex:1;}
 .muted{color:var(--muted);}
@@ -58,14 +61,37 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--gold);outline-offse
 hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0;width:100%;}
 
 /* ── TITLE ── */
-#scr-title{align-items:center;justify-content:center;text-align:center;gap:10px;}
+#scr-title{align-items:center;justify-content:center;text-align:center;gap:10px;
+  /* [디자인 제안 #2] 배경 레이어: ①푸터 가독성 스크림 ②상단 골드 글로우 ③하단 쿨 글로우 ④모눈 ⑤캔들 실루엣(무채색 — 상승/하락 색 의미와 충돌 방지) */
+  background:
+    linear-gradient(180deg, transparent 58%, rgba(14,17,23,.78) 96%),
+    radial-gradient(120% 46% at 50% -6%, rgba(255,176,32,.075), transparent 62%),
+    radial-gradient(90% 40% at 50% 106%, rgba(49,130,246,.06), transparent 60%),
+    repeating-linear-gradient(0deg, rgba(255,255,255,.022) 0 1px, transparent 1px 46px),
+    repeating-linear-gradient(90deg, rgba(255,255,255,.022) 0 1px, transparent 1px 46px),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 390 150' preserveAspectRatio='xMidYMax slice'%3E%3Cg fill='%23202839'%3E%3Crect x='18' y='84' width='16' height='52'/%3E%3Crect x='52' y='60' width='16' height='76'/%3E%3Crect x='86' y='96' width='16' height='40'/%3E%3Crect x='120' y='44' width='16' height='92'/%3E%3Crect x='154' y='72' width='16' height='64'/%3E%3Crect x='188' y='30' width='16' height='106'/%3E%3Crect x='222' y='58' width='16' height='78'/%3E%3Crect x='256' y='88' width='16' height='48'/%3E%3Crect x='290' y='50' width='16' height='86'/%3E%3Crect x='324' y='76' width='16' height='60'/%3E%3Crect x='358' y='40' width='16' height='96'/%3E%3C/g%3E%3Cg stroke='%23273044' stroke-width='2.6'%3E%3Cpath d='M26 84V64M60 60V38M94 96V78M128 44V22M162 72V52M196 30V10M230 58V36M264 88V68M298 50V28M332 76V54M366 40V18'/%3E%3C/g%3E%3C/svg%3E") center bottom/100% auto no-repeat;
+}
+/* [디자인 제안 #1] 핵심 수정 — .footnote의 margin-top:auto가 남는 공간을 전부 흡수해
+   콘텐츠가 위로 쏠리던 문제. 로고에도 margin-top:auto를 주면 여백이 위/아래로
+   양분되어 본문이 화면 세로 중앙에, 푸터는 바닥에 유지됨. */
+#scr-title .logo{margin-top:auto;}
 .logo{display:flex;align-items:center;justify-content:center;gap:11px;margin-bottom:2px;}  /* v2.8: 대문자 워드마크 기준 세로 중앙 정렬 (구 flex-end는 단일 아이콘 시절 유물) */
 .logo h1{font-size:40px;letter-spacing:.06em;margin:0;font-weight:800;line-height:1;}          /* 상속 1.45가 만들던 상하 9px 행간 제거 */
 .logo .mark{width:31px;height:31px;transform:translateY(-1px);}                                 /* 대문자 실높이(≈29px)에 맞춤 + 디센더 비대칭 광학 보정 */
 .logo .candles{width:33px;height:43px;transform:translateY(-1px);}
 @media (max-width:390px){ .logo h1{font-size:33px;} .logo .mark{width:26px;height:26px;} .logo .candles{width:28px;height:37px;} }
 .tagline{color:var(--muted);margin:0 0 10px;}
-#t-date{color:var(--muted);font-size:14px;margin-bottom:8px;}
+/* [디자인 제안 #3] 워드마크에 미세한 메탈릭 그라데이션 — 시스템 폰트의 밋밋함 보완 */
+@supports (-webkit-background-clip:text) or (background-clip:text){
+  .logo h1{background:linear-gradient(180deg,#ffffff 30%,#aeb8cc);
+    -webkit-background-clip:text;background-clip:text;color:transparent;}
+}
+/* [디자인 제안 #4] 날짜를 맨텍스트 → 회차 칩으로. '오늘의 문제' 정체성 강화 */
+#t-date{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:13px;
+  margin-bottom:8px;padding:5px 14px;border:1px solid var(--line);border-radius:999px;
+  background:rgba(22,27,36,.7);letter-spacing:.04em;}
+#t-date::before{content:"";width:6px;height:6px;border-radius:99px;background:var(--gold);
+  box-shadow:0 0 8px rgba(255,176,32,.8);}
 .title-btns{display:flex;flex-direction:column;gap:10px;width:min(340px,100%);}
 .title-sub{display:flex;gap:8px;justify-content:center;margin-top:6px;}
 .iconbtn{width:46px;height:46px;border-radius:12px;background:var(--panel);border:1px solid var(--line);display:inline-flex;align-items:center;justify-content:center;}
@@ -75,8 +101,13 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0;width:100%;}
 
 /* ── GAME ── */
 #scr-game{padding-top:10px;gap:8px;}
-.banner{background:#2a2f1e;border:1px solid #55603a;color:#e7e2b8;border-radius:10px;padding:7px 12px;font-size:13px;text-align:center;}
+.banner{background:rgba(255,176,32,.08);border:1px solid rgba(255,176,32,.32);color:#ffd489;border-radius:10px;padding:7px 12px;font-size:13px;text-align:center;} /* [디자인 제안 #9] 올리브 → 브랜드 골드 정보색으로 통일 */
 .hud{display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:700;}
+/* [디자인 제안 #8] 10라운드 진행 세그먼트 — 'ROUND n/10' 텍스트를 시각화 */
+.rprog{display:flex;gap:4px;flex:none;margin-top:-2px;}
+.rprog i{flex:1;height:3px;border-radius:2px;background:var(--line);}
+.rprog i.done{background:#44557c;}
+.rprog i.cur{background:var(--gold);box-shadow:0 0 6px rgba(255,176,32,.55);}
 .hud-pill{display:inline-flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--line);
   border-radius:10px;padding:0 10px;min-height:34px;}
 .hud-pill .lab{color:var(--muted);font-weight:600;font-size:11.5px;}
@@ -167,6 +198,8 @@ input[type="range"]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;b
 .ovl.on{display:flex;}
 .card{width:min(420px,100%);background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;
   display:flex;flex-direction:column;gap:12px;text-align:center;position:relative;}
+.ovl.on .card{animation:cardIn .22s cubic-bezier(.2,1.4,.4,1);} /* [디자인 제안 #11] 입장 모션 */
+@keyframes cardIn{from{opacity:0;transform:translateY(12px) scale(.97);}}
 .card.gold{box-shadow:0 0 34px rgba(255,176,32,.35);border-color:#6a5320;}
 .stamp{align-self:center;border:3px solid var(--muted);color:var(--muted);border-radius:10px;
   padding:4px 18px;font-size:26px;font-weight:900;letter-spacing:.12em;transform:rotate(-6deg);}
@@ -182,7 +215,7 @@ input[type="range"]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;b
 .badge.streak{color:var(--gold);}
 #st-pnl{font-size:30px;font-weight:800;}
 #st-asset{font-size:15px;}
-#st-answer{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px;font-size:14px;}
+#st-answer{background:rgba(14,17,23,.55);border:1px dashed #3d4966;border-radius:12px;padding:10px;font-size:14px;} /* [디자인 제안 #13] 정답 공개 = 점선 봉인 카드 */
 #st-answer .who{font-size:16.5px;font-weight:800;margin-top:2px;}
 /* tutorial */
 .tut-page{display:none;flex-direction:column;gap:10px;text-align:left;}
@@ -213,7 +246,9 @@ input[type="range"]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;b
 #scr-result{gap:12px;}
 .r-head{text-align:center;display:flex;flex-direction:column;gap:2px;padding-top:6px;}
 .tier-seal{width:112px;height:112px;margin:2px auto 6px;border:4px solid currentColor;border-radius:50%;
-  display:flex;align-items:center;justify-content:center;position:relative;transform:rotate(-6deg);}
+  display:flex;align-items:center;justify-content:center;position:relative;transform:rotate(-6deg);
+  box-shadow:0 0 52px -12px currentColor;                                   /* [디자인 제안 #14] 등급색 글로우 */
+  background:radial-gradient(circle at 50% 28%, rgba(255,255,255,.06), transparent 62%);}
 .tier-seal::after{content:"";position:absolute;inset:6px;border:1.5px solid currentColor;border-radius:50%;opacity:.5;}
 #r-tier{font-size:52px;font-weight:900;line-height:1;}
 #r-tierlabel{color:var(--muted);}
@@ -302,7 +337,7 @@ body{word-break:keep-all;overflow-wrap:break-word;}
 .cf-btns{display:flex;gap:8px;margin-top:16px;}
 .cf-btns .btn{flex:1;}
 @media (prefers-reduced-motion: reduce){
-  .shake,.pulse,#vignette.flash,.stamp.pop{animation:none !important;}
+  .shake,.pulse,#vignette.flash,.stamp.pop,.ovl.on .card{animation:none !important;} /* [디자인 제안 #11] 신규 입장 모션 포함 */
   .btn-primary{animation:none !important;}
   #btn-confirm{animation:none !important;}
 }
@@ -392,6 +427,7 @@ body{word-break:keep-all;overflow-wrap:break-word;}
       <button class="hudbtn num" id="hud-speed" aria-label="공개 배속 (0.5×/1×/2× 순환)">1×</button>
       <button class="hudbtn" id="hud-sound" aria-label="사운드 켜기/끄기"><svg class="ic"><use href="#i-snd-on"/></svg></button>
     </div>
+    <div class="rprog" id="rprog" aria-hidden="true"></div><!-- [디자인 제안 #8] 라운드 진행 세그먼트 -->
     <div class="charttools">
       <div class="machips" id="machips">
         <button class="chip on" data-ma="5"><span class="sw" style="background:#ffb020"></span>MA5</button>
@@ -1572,6 +1608,8 @@ function viewSavedResult(dateStr){
 function updateHud(){
   const g = Game.state;
   $("hud-round").textContent = "ROUND " + (g.roundIdx+1) + "/" + C.ROUNDS;
+  $("rprog").innerHTML = Array.from({length:C.ROUNDS},(_,i)=>  // [디자인 제안 #8] 진행 세그먼트 동기화
+    '<i class="'+(i<g.roundIdx?"done":i===g.roundIdx?"cur":"")+'"></i>').join("");
   $("hud-asset").textContent = fmtWonAbs(g.asset);
   $("hud-flame").style.display = g.winStreak >= 3 ? "inline-flex" : "none";
 }
