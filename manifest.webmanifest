@@ -1,0 +1,14 @@
+{
+  "name": "Chart Rush",
+  "short_name": "Chart Rush",
+  "description": "실존했던 과거 차트로 투자 감각을 시험해보세요. 매일 전 세계 같은 10문제.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0e1117",
+  "theme_color": "#0e1117",
+  "icons": [
+    { "src": "apple-touch-icon.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
