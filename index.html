@@ -385,8 +385,9 @@ body{word-break:keep-all;overflow-wrap:break-word;}
   <symbol id="i-question" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.6 2.2c-.8.4-1.1 1-1.1 1.8"/><path d="M12 17h.01"/></symbol>
   <symbol id="i-book" viewBox="0 0 24 24"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4z"/><path d="M5 16a3 3 0 0 1 3-3h11"/></symbol>
   <!-- 결과 글리프 5종 — 이모지 타일과 1:1 대응(§7.1), 자체 배색. 스트립·곡선·카드 공용 (§6.7) -->
-  <symbol id="g-profit" viewBox="0 0 24 24"><rect x="1.5" y="1.5" width="21" height="21" rx="5" fill="#33cc7a"/><path d="M12 6.4 17.6 17H6.4Z" fill="#fff"/></symbol>
-  <symbol id="g-loss" viewBox="0 0 24 24"><rect x="1.5" y="1.5" width="21" height="21" rx="5" fill="#f04452"/><path d="M12 17.6 6.4 7h11.2Z" fill="#fff"/></symbol>
+  <!-- [디자인 제안 #27] 수익/손실 타일 fill = 모드 변수 (GL 렌더는 기존과 동일, 카드는 Glyph.TILE 고정) -->
+  <symbol id="g-profit" viewBox="0 0 24 24"><rect x="1.5" y="1.5" width="21" height="21" rx="5" fill="var(--up)"/><path d="M12 6.4 17.6 17H6.4Z" fill="#fff"/></symbol>
+  <symbol id="g-loss" viewBox="0 0 24 24"><rect x="1.5" y="1.5" width="21" height="21" rx="5" fill="var(--down)"/><path d="M12 17.6 6.4 7h11.2Z" fill="#fff"/></symbol>
   <symbol id="g-pass" viewBox="0 0 24 24"><rect x="1.5" y="1.5" width="21" height="21" rx="5" fill="#39414f"/><path d="M7.4 7l6.2 5-6.2 5z" fill="#fff"/><path d="M16 7v10" stroke="#fff" stroke-width="2" stroke-linecap="round" fill="none"/></symbol>
   <symbol id="g-liq" viewBox="0 0 24 24"><rect x="1.5" y="1.5" width="21" height="21" rx="5" fill="#8a2029"/><path d="M12 4.6v4M12 15.4v4M4.6 12h4M15.4 12h4M6.8 6.8l2.8 2.8M14.4 14.4l2.8 2.8M17.2 6.8l-2.8 2.8M9.6 14.4l-2.8 2.8" stroke="#fff" stroke-width="2" stroke-linecap="round" fill="none"/></symbol>
   <symbol id="g-jack" viewBox="0 0 24 24"><rect x="1.5" y="1.5" width="21" height="21" rx="5" fill="#ffb020"/><g transform="rotate(-45 12 12)" fill="none" stroke="#3a2c05" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5.4q3 4.6 2.2 9.6h-4.4q-.8-5 2.2-9.6z"/><path d="M9.8 15 8 17.6M14.2 15 16 17.6M12 15v2.9"/><circle cx="12" cy="10.4" r="1.4"/></g></symbol>
@@ -512,8 +513,8 @@ body{word-break:keep-all;overflow-wrap:break-word;}
     <div class="curvewrap"><canvas id="cv-curve"></canvas><div id="curve-cover" aria-hidden="true"></div></div><!-- [디자인 제안 #17] 커브 리빌 커버 -->
     <div class="stripline">
       <div class="strip" id="r-strip"></div>
-      <div class="legend"><span><i class="sq" style="background:var(--s-profit)"></i>수익</span>
-        <span><i class="sq" style="background:var(--s-loss)"></i>손실</span></div>
+      <div class="legend"><span><i class="sq" style="background:var(--up)"></i>수익</span><!-- [디자인 제안 #27] -->
+        <span><i class="sq" style="background:var(--down)"></i>손실</span></div>
     </div>
     <div class="r-btns">
       <button class="btn btn-primary wide" id="btn-share"><svg class="ic"><use href="#i-share"/></svg> 결과 공유</button>
@@ -1000,10 +1001,10 @@ const Glyph = {
     ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
     ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
   },
-  draw(ctx, type, cx, cy, s){  // s = 타일 한 변. SVG g-* 심볼과 동형 (이모지 타일 1:1)
+  draw(ctx, type, cx, cy, s, pal){  // s = 타일 한 변. pal = 타일색 오버라이드([디자인 제안 #27] 결과 곡선용; 미지정 시 고정 TILE = 공유 카드)
     const u = s/24;
     ctx.save(); ctx.translate(cx - s/2, cy - s/2);
-    ctx.fillStyle = this.TILE[type] || "#39414f";
+    ctx.fillStyle = (pal && pal[type]) || this.TILE[type] || "#39414f";
     this.rrect(ctx, 0, 0, s, s, 5*u); ctx.fill();
     const ink = type==="jack" ? "#3a2c05" : "#ffffff";
     ctx.fillStyle = ink; ctx.strokeStyle = ink;
@@ -1382,7 +1383,8 @@ function drawCurve(cv, assets, types){
   ctx.strokeStyle="#e6e9ef"; ctx.lineWidth=2*d; ctx.beginPath();
   assets.forEach((a,i)=> i?ctx.lineTo(X(i),Y(a)):ctx.moveTo(X(i),Y(a)));
   ctx.stroke();
-  types.forEach((t,i)=> Glyph.draw(ctx, t, X(i+1), Y(assets[i+1]), 12*d));
+  const mc = modeColors();  // [디자인 제안 #27] 곡선 마커 수익/손실 = 모드 연동
+  types.forEach((t,i)=> Glyph.draw(ctx, t, X(i+1), Y(assets[i+1]), 12*d, {profit:mc.up, loss:mc.down}));
 }
 
 /* 정답 리스트 미니 차트 (§5.5) */
@@ -1858,7 +1860,7 @@ function renderResult(R){
   $("r-tier").textContent = R.tier; $("r-tier-seal").className = "tier-seal tier-" + R.tier;
   $("r-tierlabel").textContent = R.label;
   $("r-ret").textContent = fmtPct(R.ret);
-  $("r-ret").style.color = R.ret >= 0 ? "var(--s-profit)" : "var(--s-loss)";
+  $("r-ret").style.color = R.ret >= 0 ? "var(--up)" : "var(--down)";  // [디자인 제안 #27] 개인 화면 손익색 모드 연동
   $("r-asset").textContent = "최종 자산 " + fmtWonAbs(R.asset) + " (시작 1억)";
   const b = $("r-banner");
   if (R.practice){ b.textContent = R.banner || PRACT_FREE; b.style.display = "block"; }
@@ -1880,7 +1882,7 @@ function renderResult(R){
     row.appendChild(info);
     const res = document.createElement("div"); res.className = "res num";
     res.innerHTML = rec.pass ? '<span class="muted">±0</span>'
-      : '<span style="color:'+(rec.pnl>=0?"var(--s-profit)":"var(--s-loss)")+'">'+fmtWonSigned(rec.pnl)+'</span>';
+      : '<span style="color:'+(rec.pnl>=0?"var(--up)":"var(--down)")+'">'+fmtWonSigned(rec.pnl)+'</span>'  // [디자인 제안 #27];
     row.appendChild(res);
     list.appendChild(row);
     drawMini(cv, rd, mc.up, mc.down);
@@ -2086,7 +2088,7 @@ function renderHistory(from){
       const row = document.createElement("button"); row.className = "hrow";
       row.innerHTML = '<span class="num muted">'+e.date+'</span><span class="tier tier-'+e.tier+'">'+e.tier+'</span>'
         + '<span class="strip">'+stripSVG(Share.parseEmoji(e.emoji||""),14)+'</span>'
-        + '<span class="ret num" style="color:'+(e.ret>=0?"var(--s-profit)":"var(--s-loss)")+'">'+fmtPct(e.ret)+'</span>';
+        + '<span class="ret num" style="color:'+(e.ret>=0?"var(--up)":"var(--down)")+'">'+fmtPct(e.ret)+'</span>'  // [디자인 제안 #27];
       row.addEventListener("click", ()=>viewSavedResult(e.date));   // 저장 부재 시 내부 토스트 안내
       list.appendChild(row);
     });
