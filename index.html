@@ -1050,50 +1050,103 @@ function stripSVG(types, size){
 
 /* ═══════════ Sfx (§6.4 WebAudio 합성, 외부 에셋 0) ═══════════ */
 const Sfx = {
-  ctx:null, muted:false, VOL:0.5,
+  /* v2.9 사운드 개편 — 마스터 버스+컴프레서, 노이즈 버퍼 캐시, 폰 스피커 가청대역, 잭팟/팡파레 분리,
+     공개 구간 페달톤, 입력 사운드(확정·패스·선택). 개별 피크에 VOL을 곱하지 않고 버스 게인이 담당. */
+  ctx:null, bus:null, comp:null, muted:false, VOL:0.5, _noiseBuf:null, _pedal:null,
   ensure(){
     if (!this.ctx){ try{ this.ctx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
+    if (this.ctx && !this.bus){
+      this.comp = this.ctx.createDynamicsCompressor();
+      this.comp.threshold.value = -12; this.comp.knee.value = 6; this.comp.ratio.value = 6;
+      this.comp.attack.value = 0.003; this.comp.release.value = 0.2;
+      this.bus = this.ctx.createGain(); this.bus.gain.value = this.VOL;
+      this.bus.connect(this.comp); this.comp.connect(this.ctx.destination);
+    }
     if (this.ctx && this.ctx.state === "suspended") this.ctx.resume().catch(()=>{});
   },
-  ready(){ return this.ctx && !this.muted; },
-  tone(freq, dur, type, peak, glideTo, when){
+  ready(){ return this.ctx && this.bus && !this.muted; },
+  setVolume(v){                                   // 볼륨 슬라이더 연결용 (0~1)
+    this.VOL = clamp(+v||0, 0, 1);
+    if (this.bus) this.bus.gain.setTargetAtTime(this.VOL, this.ctx.currentTime, 0.02);
+  },
+  tone(freq, dur, type, peak, glideTo, when, detune){
     if (!this.ready()) return;
     const t0 = this.ctx.currentTime + (when||0);
     const o = this.ctx.createOscillator(), g = this.ctx.createGain();
     o.type = type; o.frequency.setValueAtTime(freq, t0);
+    o.detune.value = (detune||0) + (Math.random()-0.5)*12;   // v2.10: ±6센트 지터 — 반복 피로 완화 (Balatro 카드 회전 ±3° 원리)
     if (glideTo) o.frequency.exponentialRampToValueAtTime(glideTo, t0+dur);
     g.gain.setValueAtTime(0, t0);
-    g.gain.linearRampToValueAtTime(peak*this.VOL, t0+0.008);
+    g.gain.linearRampToValueAtTime(peak, t0+0.008);
     g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
-    o.connect(g); g.connect(this.ctx.destination);
+    o.connect(g); g.connect(this.bus);
     o.start(t0); o.stop(t0+dur+0.02);
   },
-  noise(dur, peak, filterType, freq, when, sweepTo){
+  noiseBuf(){                                     // 1초 백색잡음 1회 생성 후 재사용
+    if (!this._noiseBuf){
+      const n = this.ctx.sampleRate;
+      const buf = this.ctx.createBuffer(1, n, this.ctx.sampleRate), d = buf.getChannelData(0);
+      for (let i=0;i<n;i++) d[i] = Math.random()*2-1;
+      this._noiseBuf = buf;
+    }
+    return this._noiseBuf;
+  },
+  noise(dur, peak, filterType, freq, when, sweepTo, q){
     if (!this.ready()) return;
     const t0 = this.ctx.currentTime + (when||0);
-    const n = Math.floor(this.ctx.sampleRate*dur);
-    const buf = this.ctx.createBuffer(1, n, this.ctx.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i=0;i<n;i++) d[i] = Math.random()*2-1;
-    const src = this.ctx.createBufferSource(); src.buffer = buf;
+    const src = this.ctx.createBufferSource(); src.buffer = this.noiseBuf(); src.loop = true;
     const f = this.ctx.createBiquadFilter(); f.type = filterType; f.frequency.setValueAtTime(freq, t0);
+    if (q) f.Q.value = q;
     if (sweepTo) f.frequency.exponentialRampToValueAtTime(sweepTo, t0+dur);
     const g = this.ctx.createGain();
-    g.gain.setValueAtTime(peak*this.VOL, t0);
+    g.gain.setValueAtTime(peak, t0);
     g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
-    src.connect(f); f.connect(g); g.connect(this.ctx.destination);
-    src.start(t0); src.stop(t0+dur+0.02);
+    src.connect(f); f.connect(g); g.connect(this.bus);
+    src.start(t0, Math.random()*0.9); src.stop(t0+dur+0.02);
   },
+
+  /* ── 봉 공개 (§6.1) ── */
   tick(){ this.noise(0.03, 0.35, "highpass", 3000); },
-  up(soft){ this.tone(523, 0.12, "sine", soft?0.2:0.5, 784); },
-  down(soft){ this.tone(220, 0.14, "triangle", soft?0.22:0.5, 150); },
-  drum(){ for (let i=0;i<7;i++) this.noise(0.035, 0.26, "lowpass", 300, i*0.05); },
-  arpeggio(){ [523.25,659.25,783.99,1046.5].forEach((f,i)=>this.tone(f, 0.14, "sine", 0.42, null, i*0.055)); },
-  thud(){ this.noise(0.05, 0.5, "lowpass", 500); },
+  // v2.10: k = 0~1 연속 강도 (봉 등락률/6% 클램프). 피치·길이·피크가 함께 스케일 — 크레센도 후반부에서 소리도 커짐
+  up(k){   k = clamp(k===undefined?0.5:k, 0.15, 1); this.tone(523*(1+0.15*k), 0.10+0.06*k, "sine",     0.18+0.34*k, 784*(1+0.15*k)); },   // C5→G5
+  down(k){ k = clamp(k===undefined?0.5:k, 0.15, 1); this.tone(440*(1-0.10*k), 0.10+0.06*k, "triangle", 0.18+0.34*k, 300*(1-0.10*k)); },   // A4→D4
+  drum(sp){                                                                      // 배속 연동, 로우패스 300→900·피크 상향 (구버전은 tick의 1/10 음량)
+    const k = 0.05/(sp||1);
+    for (let i=0;i<7;i++) this.noise(0.04, 1.0, "lowpass", 900, i*k, null, 1.5);
+  },
+  pedalStart(){                                   // 공개 구간 페달톤 — 봉마다 반음 상승, 정산·청산·이탈 시 정지
+    if (!this.ready()) return;
+    this.pedalStop();
+    const t0 = this.ctx.currentTime, base = 261.63;                              // C4
+    const o = this.ctx.createOscillator(), o2 = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = "sine"; o2.type = "sine";
+    o.frequency.value = base; o2.frequency.value = base; o2.detune.value = 6;   // 미세 디튠 → 느린 비트
+    g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(0.07, t0+0.25);
+    o.connect(g); o2.connect(g); g.connect(this.bus); o.start(t0); o2.start(t0);
+    this._pedal = {o, o2, g, base, guard:setTimeout(()=>this.pedalStop(), 12000)};
+  },
+  pedalStep(k){                                   // k = 0..4
+    const p = this._pedal; if (!p) return;
+    const f = p.base * Math.pow(2, (k+1)/12), t = this.ctx.currentTime;
+    p.o.frequency.setTargetAtTime(f, t, 0.03); p.o2.frequency.setTargetAtTime(f, t, 0.03);
+    p.g.gain.setTargetAtTime(0.07 + 0.012*(k+1), t, 0.05);
+  },
+  pedalStop(){
+    const p = this._pedal; if (!p) return;
+    this._pedal = null; clearTimeout(p.guard);
+    const t = this.ctx.currentTime;
+    p.g.gain.cancelScheduledValues(t);
+    p.g.gain.setValueAtTime(Math.max(p.g.gain.value, 0.0001), t);
+    p.g.gain.exponentialRampToValueAtTime(0.0001, t+0.08);
+    p.o.stop(t+0.1); p.o2.stop(t+0.1);
+  },
+  thud(){ this.noise(0.05, 1.0, "lowpass", 900); },                              // 스탬프용 (현재 청산은 liq가 전담)
   liq(){
     for (let i=0;i<3;i++) this.tone(880, 0.08, "square", 0.45, null, i*0.14);
     this.noise(0.4, 0.5, "lowpass", 3200, 0.05, 220);
   },
+
+  /* ── 정산 (§6.3) ── */
   cash(){ // FM 딩 + 셰이커
     if (!this.ready()) return;
     const t0 = this.ctx.currentTime;
@@ -1102,13 +1155,40 @@ const Sfx = {
     car.frequency.value = 900; mod.frequency.value = 1350;
     mg.gain.setValueAtTime(420, t0); mg.gain.exponentialRampToValueAtTime(1, t0+0.3);
     mod.connect(mg); mg.connect(car.frequency);
-    g.gain.setValueAtTime(0.45*this.VOL, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0+0.35);
-    car.connect(g); g.connect(this.ctx.destination);
+    g.gain.setValueAtTime(0.45, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0+0.35);
+    car.connect(g); g.connect(this.bus);
     car.start(t0); mod.start(t0); car.stop(t0+0.4); mod.stop(t0+0.4);
-    this.noise(0.08, 0.2, "bandpass", 5200, 0.02);
+    this.noise(0.08, 0.2, "bandpass", 5200, 0.02, null, 1.2);
   },
-  coin(){ this.tone(988, 0.07, "sine", 0.4); this.tone(1319, 0.1, "sine", 0.4, null, 0.07); },
-  fanfare(){ [523.25,659.25,783.99,1046.5].forEach((f,i)=>this.tone(f, 0.18, "sine", 0.45, null, i*0.08)); },
+  coin(){ this.tone(1175, 0.07, "sine", 0.4); this.tone(1760, 0.1, "sine", 0.4, null, 0.07); },  // D6→A6 (구 B5→E6은 마리오 코인과 동일)
+  arpeggio(){                                     // 잭팟 전용 — 5음 상승 + 디튠/옥타브 레이어 + C7 종지 (fanfare와 구분)
+    [523.25,659.25,783.99,1046.5,1318.5].forEach((f,i)=>{
+      this.tone(f,   0.16, "sine",     0.42, null, i*0.05);
+      this.tone(f,   0.16, "sine",     0.18, null, i*0.05, 5);
+      this.tone(f*2, 0.10, "triangle", 0.12, null, i*0.05);
+    });
+    this.tone(2093, 0.55, "sine", 0.32, null, 0.26);
+    this.tone(2093, 0.55, "sine", 0.14, null, 0.26, -5);
+    this.noise(0.12, 0.25, "bandpass", 6000, 0.26, null, 2);
+  },
+  fanfare(when){                                  // 3연승·게임 종료 — 4음 메이저 + 옥타브 레이어
+    const w = when||0;
+    [523.25,659.25,783.99,1046.5].forEach((f,i)=>{
+      this.tone(f,   0.18, "sine",     0.45, null, w+i*0.08);
+      this.tone(f*2, 0.12, "triangle", 0.12, null, w+i*0.08);
+    });
+  },
+
+  finish(tier){                                   // v2.10: 결과 화면 — S/A 팡파레, B/C 담담한 2음, D/E/F 하강 종지
+    if (tier === "S" || tier === "A") this.fanfare();
+    else if (tier === "B" || tier === "C"){ this.tone(523, 0.16, "sine", 0.32); this.tone(659, 0.34, "sine", 0.34, null, 0.14); }
+    else { this.tone(330, 0.18, "triangle", 0.36); this.tone(262, 0.5, "triangle", 0.38, 220, 0.16); }
+  },
+
+  /* ── 입력 (v2.9) ── */
+  commit(){ this.tone(392, 0.05, "square", 0.22); this.tone(523, 0.14, "sine", 0.34, null, 0.045); },   // G4→C5 잠금
+  pass(){   this.tone(523, 0.05, "sine",   0.22); this.tone(392, 0.12, "sine", 0.26, null, 0.045); },   // C5→G4 (commit의 거울)
+  select(soft){ this.tone(soft?1200:900, 0.035, "sine", soft?0.14:0.22); this.noise(0.02, soft?0.12:0.2, "highpass", 4000); },
 };
 
 /* ═══════════ Fx (§6.3·§6.5) ═══════════ */
@@ -1466,8 +1546,7 @@ function hidePhase(){ clearTimeout(phaseT); const el = $("g-phase"); el.classLis
 function chartStamp(txt, cls, hold){
   const el = $("g-phase");
   el.innerHTML = '<span class="stamp pop ' + cls + '">' + txt + '</span>';
-  el.classList.add("show");
-  Sfx.thud();
+  el.classList.add("show");                      // v2.9: 스탬프 thud 제거 — 청산은 liq가 전담 (3중 발음 해소)
   clearTimeout(phaseT);
   phaseT = setTimeout(()=>{ el.classList.remove("show"); el.textContent = ""; }, hold||1200);
 }
@@ -1728,6 +1807,7 @@ async function runReveal(dec){
   $("live-phase").className = "num";
   if (cd.type==="bet") chart.setLiqLine(cd.dir, cd.lev);
   panelPhase("투자 결과 공개!", "", 900/spd());
+  Sfx.pedalStart();                               // v2.9: 공개 구간 페달톤
   await sleep(750/spd());
   if (myGen !== revealGen) return;
   let liq = false, liqBar = -1;
@@ -1737,9 +1817,9 @@ async function runReveal(dec){
       await sleep(400/spd());
       if (myGen !== revealGen) return;
       panelPhase("마지막!", "last", 900/spd());
-      Sfx.drum();
+      Sfx.drum(spd());                            // v2.9: 배속 연동
     }
-    Sfx.tick(); Fx.vibrate(10);
+    Sfx.tick(); Sfx.pedalStep(k);                 // v2.9: 봉당 진동 제거 → 큰 봉에서만
     const si = 120+k;
     const hitHere = cd.type==="bet" && !liq &&
       (cd.dir>0 ? round.l[si] <= L : round.h[si] >= L);   // 극값 우선 (§1.3, 1×도 검사)
@@ -1751,7 +1831,7 @@ async function runReveal(dec){
           liq = true; liqBar = si;
           chart.markLiq(si);
           chartStamp("청산!", "liq", 1500);
-          Fx.shake($("scr-game")); Fx.vignette(); Sfx.liq(); Fx.vibrate(200);
+          Fx.shake($("scr-game")); Fx.vignette(); Sfx.pedalStop(); Sfx.liq(); Fx.vibrate(200);
           setLivePnl(unrealized(round, cd, si, true), cd, true);
           chart.freezeAnim(650/spd());
         } else {
@@ -1762,14 +1842,18 @@ async function runReveal(dec){
     if (myGen !== revealGen) return;
     const chg = round.c[si]/round.c[si-1] - 1;      // 봉 완료 차임 위계 (§6.1 v1.7)
     const upBar = round.c[si] >= round.o[si];
+    // v2.10: 소리는 플레이어 관점 — 숏 포지션의 하락 봉은 '좋음'. 패스는 중립(봉 색). 플래시 색은 봉 색 유지.
+    const good = cd.type==="pass" ? upBar : ((cd.dir>0) === upBar);
+    const k = Math.min(1, Math.abs(chg)/0.06);       // 연속 강도
     if (si === liqBar){ /* 청산 봉: liq 사운드가 지배 */ }
-    else if (liq){ upBar ? Sfx.up(true) : Sfx.down(true); }
+    else if (liq){ good ? Sfx.up(0.15) : Sfx.down(0.15); }
     else if (Math.abs(chg) >= 0.03){
       Fx.pulse($("chartwrap"));
       Fx.flash(getComputedStyle(document.body).getPropertyValue(upBar ? "--up" : "--down").trim());
-      upBar ? Sfx.up() : Sfx.down();
-    } else { upBar ? Sfx.up(true) : Sfx.down(true); }
+      good ? Sfx.up(k) : Sfx.down(k); Fx.vibrate(12);
+    } else { good ? Sfx.up(k) : Sfx.down(k); }
   }
+  Sfx.pedalStop();                                // v2.9
   await sleep(280/spd());
   if (myGen !== revealGen) return;
   const before = g.asset;
@@ -1821,8 +1905,8 @@ function showSettle(rec, before, cd, silent){
     if (rec.jack){ Sfx.arpeggio(); Fx.confetti(); }
     else if (rec.big){ Sfx.cash(); Sfx.coin(); }
     else if (!rec.pass && !rec.liq && rec.pnl > 0){ Sfx.cash(); }
-    else if (!rec.pass && !rec.liq){ Sfx.down(); }
-    if (!rec.jack && !rec.pass && rec.pnl > 0 && g.winStreak === 3) Sfx.fanfare();
+    else if (!rec.pass && !rec.liq){ Sfx.down(0.8); }
+    if (!rec.jack && !rec.pass && rec.pnl > 0 && g.winStreak === 3) Sfx.fanfare(0.35);  // v2.9: cash 뒤로
     Fx.vibrate(30);
   }
   updateHud();
@@ -1853,7 +1937,7 @@ function finishGame(){
   show("scr-result");
   renderResult({dateStr:g.dateStr, seed:g.seed, asset:g.asset, ret, tier:T.tier, label:T.label,
                 types, recs:g.recs, rounds:g.rounds, practice:g.practice, banner:g.banner});
-  Sfx.fanfare();
+  Sfx.finish(T.tier);                             // v2.10: 티어별 종료음
 }
 function renderResult(R){
   curResult = R;
@@ -2118,6 +2202,7 @@ function syncSoundIcon(){
 }
 function toggleSound(){
   settings.sound = !settings.sound; Sfx.muted = !settings.sound;
+  if (Sfx.muted) Sfx.pedalStop(); else Sfx.ensure();   // v2.9
   Store.saveSettings(settings); syncSoundIcon();
   toast(settings.sound ? "사운드 켬" : "사운드 끔");
 }
@@ -2133,6 +2218,7 @@ async function onConfirm(){
   const bet = Math.round(g.asset * Bet.pct/100);
   const d = {type:"bet", dir:Bet.dir, amt:bet, lev:Bet.lev};
   g.decisions[g.roundIdx] = d;
+  Sfx.commit();                                   // v2.9
   await runReveal(d);
 }
 async function onPass(){
@@ -2141,6 +2227,7 @@ async function onPass(){
   g.passLeft--;
   const d = {type:"pass"};
   g.decisions[g.roundIdx] = d;
+  Sfx.pass();                                     // v2.9
   updateHud();
   await runReveal(d);
 }
@@ -2156,6 +2243,7 @@ function exitToHome(){
   const g = Game.state;
   const leave = ()=>{
     revealGen++;                                  // 진행 중 리빌 중단
+    Sfx.pedalStop();                              // v2.9
     if (chart && chart.anim){ chart.anim.tAcc = 1e9; chart.anim.frozenUntil = 0; }
     if (chart) chart.request();
     hidePhase();
@@ -2172,6 +2260,7 @@ function exitToHome(){
 
 function bind(){
   document.addEventListener("pointerdown", ()=>Sfx.ensure());
+  document.addEventListener("visibilitychange", ()=>{ if (!document.hidden) Sfx.ensure(); });  // v2.9: iOS 백그라운드 복귀
   $("btn-daily").addEventListener("click", ()=>{
     Sfx.ensure();
     const today = kstDate();
@@ -2209,12 +2298,12 @@ function bind(){
     ch.classList.toggle("on", chart.maOn[p]);
     chart.draw();
   }));
-  $("btn-long").addEventListener("click", ()=>{ Bet.dir = Bet.dir===1 ? 0 : 1; Bet.sync(); });
-  $("btn-short").addEventListener("click", ()=>{ Bet.dir = Bet.dir===-1 ? 0 : -1; Bet.sync(); });
+  $("btn-long").addEventListener("click", ()=>{ Bet.dir = Bet.dir===1 ? 0 : 1; Bet.sync(); Sfx.select(); });     // v2.9
+  $("btn-short").addEventListener("click", ()=>{ Bet.dir = Bet.dir===-1 ? 0 : -1; Bet.sync(); Sfx.select(); });
   document.querySelectorAll("#seg-lev button").forEach(b=>b.addEventListener("click", ()=>{
-    Bet.lev = +b.dataset.lev; Bet.sync();
+    Bet.lev = +b.dataset.lev; Bet.sync(); Sfx.select(true);
   }));
-  document.querySelectorAll(".amtq button").forEach(b=>b.addEventListener("click", ()=>Bet.setPct(b.dataset.amt)));
+  document.querySelectorAll(".amtq button").forEach(b=>b.addEventListener("click", ()=>{ Bet.setPct(b.dataset.amt); Sfx.select(true); }));
   $("amt-slider").addEventListener("input", e=>Bet.setPct(e.target.value));
   $("amt-input").addEventListener("input", e=>{ if (e.target.value!=="") Bet.setPct(e.target.value); });
   $("amt-input").addEventListener("blur", ()=>Bet.sync());   // v2.5: 범위 밖 입력이 클램프된 실값으로 표시 복원
@@ -2222,7 +2311,7 @@ function bind(){
   $("btn-pass").addEventListener("click", onPass);
   $("hud-speed").addEventListener("click", cycleSpeed);
   syncSpeedBtn();
-  $("btn-next").addEventListener("click", nextRound);
+  $("btn-next").addEventListener("click", ()=>{ Sfx.select(); nextRound(); });   // v2.9
   $("btn-share").addEventListener("click", openShare);
   $("btn-share-img").addEventListener("click", saveShareImage);
   $("btn-share-copy").addEventListener("click", shareText);
