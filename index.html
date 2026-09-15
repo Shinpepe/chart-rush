@@ -1844,14 +1844,14 @@ async function runReveal(dec){
     const upBar = round.c[si] >= round.o[si];
     // v2.10: 소리는 플레이어 관점 — 숏 포지션의 하락 봉은 '좋음'. 패스는 중립(봉 색). 플래시 색은 봉 색 유지.
     const good = cd.type==="pass" ? upBar : ((cd.dir>0) === upBar);
-    const k = Math.min(1, Math.abs(chg)/0.06);       // 연속 강도
+    const amp = Math.min(1, Math.abs(chg)/0.06);     // 연속 강도 (루프 변수 k와 이름 충돌 방지)
     if (si === liqBar){ /* 청산 봉: liq 사운드가 지배 */ }
     else if (liq){ good ? Sfx.up(0.15) : Sfx.down(0.15); }
     else if (Math.abs(chg) >= 0.03){
       Fx.pulse($("chartwrap"));
       Fx.flash(getComputedStyle(document.body).getPropertyValue(upBar ? "--up" : "--down").trim());
-      good ? Sfx.up(k) : Sfx.down(k); Fx.vibrate(12);
-    } else { good ? Sfx.up(k) : Sfx.down(k); }
+      good ? Sfx.up(amp) : Sfx.down(amp); Fx.vibrate(12);
+    } else { good ? Sfx.up(amp) : Sfx.down(amp); }
   }
   Sfx.pedalStop();                                // v2.9
   await sleep(280/spd());
