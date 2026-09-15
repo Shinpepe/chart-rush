@@ -824,7 +824,7 @@ function settle(round, decision, assetBefore){
 }
 function unrealized(round, decision, lastIdx, liqAlready){
   if (decision.type==="pass") return {pnl:0, rr: round.c[lastIdx]/100-1};
-  if (liqAlready) return {pnl:-decision.bet, rr:-1/decision.lev};
+  if (liqAlready) return {pnl:-decision.bet, rr:-1};                    // v2.11: 투자 대비 −100% (기존 −1/lev는 가격 기준이라 표기 단위와 불일치)
   const rr = decision.dir*(round.c[lastIdx]/100-1);
   const p = Math.round(decision.bet*decision.lev*rr);                    // v1.2 데이터 가드 (§1.3): 표시도 −투자금 아래로 내려가지 않음
   return {pnl: Math.max(p, -decision.bet), rr: Math.max(rr*decision.lev, -1)};
@@ -1074,7 +1074,7 @@ const Sfx = {
     const t0 = this.ctx.currentTime + (when||0);
     const o = this.ctx.createOscillator(), g = this.ctx.createGain();
     o.type = type; o.frequency.setValueAtTime(freq, t0);
-    o.detune.value = (detune||0) + (Math.random()-0.5)*12;   // v2.10: ±6센트 지터 — 반복 피로 완화 (Balatro 카드 회전 ±3° 원리)
+    o.detune.value = detune!==undefined ? detune : (Math.random()-0.5)*12;   // v2.10: ±6센트 지터 — 반복 피로 완화. 명시 디튠 레이어(잭팟/팡파레)는 지터 제외
     if (glideTo) o.frequency.exponentialRampToValueAtTime(glideTo, t0+dur);
     g.gain.setValueAtTime(0, t0);
     g.gain.linearRampToValueAtTime(peak, t0+0.008);
@@ -1112,7 +1112,7 @@ const Sfx = {
   down(k){ k = clamp(k===undefined?0.5:k, 0.15, 1); this.tone(440*(1-0.10*k), 0.10+0.06*k, "triangle", 0.18+0.34*k, 300*(1-0.10*k)); },   // A4→D4
   drum(sp){                                                                      // 배속 연동, 로우패스 300→900·피크 상향 (구버전은 tick의 1/10 음량)
     const k = 0.05/(sp||1);
-    for (let i=0;i<7;i++) this.noise(0.04, 1.0, "lowpass", 900, i*k, null, 1.5);
+    for (let i=0;i<7;i++) this.noise(0.04/(sp||1), 1.0, "lowpass", 900, i*k, null, 1.5);   // 길이도 배속 연동 → 겹침 방지
   },
   pedalStart(){                                   // 공개 구간 페달톤 — 봉마다 반음 상승, 정산·청산·이탈 시 정지
     if (!this.ready()) return;
@@ -1123,7 +1123,7 @@ const Sfx = {
     o.frequency.value = base; o2.frequency.value = base; o2.detune.value = 6;   // 미세 디튠 → 느린 비트
     g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(0.07, t0+0.25);
     o.connect(g); o2.connect(g); g.connect(this.bus); o.start(t0); o2.start(t0);
-    this._pedal = {o, o2, g, base, guard:setTimeout(()=>this.pedalStop(), 12000)};
+    this._pedal = {o, o2, g, base, guard:setTimeout(()=>this.pedalStop(), 12000/spd() + 4000)};   // 배속 연동 + 여유
   },
   pedalStep(k){                                   // k = 0..4
     const p = this._pedal; if (!p) return;
@@ -1135,8 +1135,8 @@ const Sfx = {
     const p = this._pedal; if (!p) return;
     this._pedal = null; clearTimeout(p.guard);
     const t = this.ctx.currentTime;
-    p.g.gain.cancelScheduledValues(t);
-    p.g.gain.setValueAtTime(Math.max(p.g.gain.value, 0.0001), t);
+    if (p.g.gain.cancelAndHoldAtTime) p.g.gain.cancelAndHoldAtTime(t);   // 진행 중 램프 값 유지 → 클릭 노이즈 방지
+    else { p.g.gain.cancelScheduledValues(t); p.g.gain.setValueAtTime(Math.max(p.g.gain.value, 0.0001), t); }
     p.g.gain.exponentialRampToValueAtTime(0.0001, t+0.08);
     p.o.stop(t+0.1); p.o2.stop(t+0.1);
   },
@@ -1160,7 +1160,7 @@ const Sfx = {
     car.start(t0); mod.start(t0); car.stop(t0+0.4); mod.stop(t0+0.4);
     this.noise(0.08, 0.2, "bandpass", 5200, 0.02, null, 1.2);
   },
-  coin(){ this.tone(1175, 0.07, "sine", 0.4); this.tone(1760, 0.1, "sine", 0.4, null, 0.07); },  // D6→A6 (구 B5→E6은 마리오 코인과 동일)
+  coin(when){ const w = when||0; this.tone(1175, 0.07, "sine", 0.4, null, w); this.tone(1760, 0.1, "sine", 0.4, null, w+0.07); },  // D6→A6 (구 B5→E6은 마리오 코인과 동일)
   arpeggio(){                                     // 잭팟 전용 — 5음 상승 + 디튠/옥타브 레이어 + C7 종지 (fanfare와 구분)
     [523.25,659.25,783.99,1046.5,1318.5].forEach((f,i)=>{
       this.tone(f,   0.16, "sine",     0.42, null, i*0.05);
@@ -1616,8 +1616,12 @@ function startDaily(){
 /* ═══════════ 게임 시작·복원 ═══════════ */
 function newGame(dateStr, opt){
   const seed = opt.seed || dailySeed(dateStr);
+  const rounds = roundsFromSeed(seed);
+  if (rounds.length < C.ROUNDS){                  // v2.11: 데이터 축소·필터 강화로 10문제를 못 뽑는 경우 크래시 대신 안내
+    toast("출제 가능한 차트가 부족합니다 (데이터 확인 필요)"); return;
+  }
   Game.state = {
-    rounds: roundsFromSeed(seed), dateStr, seed,
+    rounds, dateStr, seed,
     daily: !!opt.daily, practice: !!opt.practice, banner: opt.banner || null,
     asset: C.START_ASSET, passLeft: C.PASS_MAX, roundIdx: 0, phase: "betting",
     decisions: Array(C.ROUNDS).fill(null), settled: Array(C.ROUNDS).fill(false),
@@ -1639,7 +1643,12 @@ function saveDaily(){
 }
 function resumeGame(dateStr){
   const sv = Store.daily(dateStr);
-  if (!sv || !sv.anchors){ newGame(dateStr, {daily:true}); return; }
+  if (!sv || !sv.anchors){
+    if (dateStr === kstDate()){ newGame(dateStr, {daily:true}); return; }
+    Store.del("cr1:daily:" + dateStr);              // v2.11: 과거 날짜 저장분이 손상된 경우 새 데일리를 만들지 않고 정리
+    toast("저장 기록이 손상되어 이어할 수 없습니다");
+    refreshTitle(); show("scr-title"); return;
+  }
   const rounds = roundsFromAnchors(sv.anchors);   // §10.4: 시드 재생성 금지, 앵커 복원
   if (!rounds){
     Store.del("cr1:daily:" + dateStr);              // §10.4 v2.5: 미완주 무효분 삭제 — 잠금이 없으므로 새 출제로 재도전 가능
@@ -1843,7 +1852,7 @@ async function runReveal(dec){
     const chg = round.c[si]/round.c[si-1] - 1;      // 봉 완료 차임 위계 (§6.1 v1.7)
     const upBar = round.c[si] >= round.o[si];
     // v2.10: 소리는 플레이어 관점 — 숏 포지션의 하락 봉은 '좋음'. 패스는 중립(봉 색). 플래시 색은 봉 색 유지.
-    const good = cd.type==="pass" ? upBar : ((cd.dir>0) === upBar);
+    const good = (cd.type==="pass" || liq) ? upBar : ((cd.dir>0) === upBar);   // 패스·청산 후엔 포지션 없음 → 봉 색 기준 중립
     const amp = Math.min(1, Math.abs(chg)/0.06);     // 연속 강도 (루프 변수 k와 이름 충돌 방지)
     if (si === liqBar){ /* 청산 봉: liq 사운드가 지배 */ }
     else if (liq){ good ? Sfx.up(0.15) : Sfx.down(0.15); }
@@ -1903,7 +1912,7 @@ function showSettle(rec, before, cd, silent){
   // 사운드·연출 (§6.3) — 자동 정산 복원 시 무음
   if (!silent){
     if (rec.jack){ Sfx.arpeggio(); Fx.confetti(); }
-    else if (rec.big){ Sfx.cash(); Sfx.coin(); }
+    else if (rec.big){ Sfx.cash(); Sfx.coin(0.12); }         // 딩 → 짤랑 순서
     else if (!rec.pass && !rec.liq && rec.pnl > 0){ Sfx.cash(); }
     else if (!rec.pass && !rec.liq){ Sfx.down(0.8); }
     if (!rec.jack && !rec.pass && rec.pnl > 0 && g.winStreak === 3) Sfx.fanfare(0.35);  // v2.9: cash 뒤로
@@ -2219,7 +2228,7 @@ async function onConfirm(){
   const d = {type:"bet", dir:Bet.dir, amt:bet, lev:Bet.lev};
   g.decisions[g.roundIdx] = d;
   Sfx.commit();                                   // v2.9
-  await runReveal(d);
+  await safeReveal(d);
 }
 async function onPass(){
   const g = Game.state;
@@ -2229,7 +2238,22 @@ async function onPass(){
   g.decisions[g.roundIdx] = d;
   Sfx.pass();                                     // v2.9
   updateHud();
-  await runReveal(d);
+  await safeReveal(d, ()=>{ g.passLeft++; updateHud(); });
+}
+async function safeReveal(d, undo){               // v2.11: 리빌 중 예외가 조용히 묻히지 않도록 — 베팅 단계로 복구
+  const g = Game.state;
+  try{ await runReveal(d); }
+  catch(e){
+    console.error("runReveal failed", e);
+    if (Game.state !== g || g.phase !== "reveal") return;   // 이미 이탈했거나 정산까지 갔으면 손대지 않음
+    revealGen++; Sfx.pedalStop(); hidePhase();
+    g.decisions[g.roundIdx] = null; g.phase = "betting";
+    if (undo) undo();
+    if (g.daily) saveDaily();
+    $("panel-live").classList.add("hide"); $("panel-bet").classList.remove("hide");
+    Bet.sync();
+    toast("결과 공개 중 오류가 발생해 라운드를 되돌렸습니다");
+  }
 }
 function goHome(){ refreshTitle(); show("scr-title"); }
 let cfCb = null;
@@ -2260,6 +2284,7 @@ function exitToHome(){
 
 function bind(){
   document.addEventListener("pointerdown", ()=>Sfx.ensure());
+  document.addEventListener("keydown", ()=>Sfx.ensure());        // 키보드 전용 사용자도 오디오 언락
   document.addEventListener("visibilitychange", ()=>{ if (!document.hidden) Sfx.ensure(); });  // v2.9: iOS 백그라운드 복귀
   $("btn-daily").addEventListener("click", ()=>{
     Sfx.ensure();
